@@ -12,6 +12,30 @@
  */
 package org.camunda.bpm.identity.impl.ldap;
 
+import static org.camunda.bpm.engine.authorization.Permissions.READ;
+import static org.camunda.bpm.engine.authorization.Resources.GROUP;
+import static org.camunda.bpm.engine.authorization.Resources.USER;
+
+import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.Hashtable;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.naming.AuthenticationException;
+import javax.naming.Context;
+import javax.naming.NamingEnumeration;
+import javax.naming.NamingException;
+import javax.naming.directory.Attribute;
+import javax.naming.directory.Attributes;
+import javax.naming.directory.SearchResult;
+import javax.naming.ldap.Control;
+import javax.naming.ldap.InitialLdapContext;
+import javax.naming.ldap.LdapContext;
+import javax.naming.ldap.SortControl;
+
 import org.camunda.bpm.engine.authorization.Permission;
 import org.camunda.bpm.engine.authorization.Resource;
 import org.camunda.bpm.engine.identity.Group;
@@ -26,29 +50,6 @@ import org.camunda.bpm.engine.impl.identity.ReadOnlyIdentityProvider;
 import org.camunda.bpm.engine.impl.interceptor.CommandContext;
 import org.camunda.bpm.engine.impl.persistence.entity.GroupEntity;
 import org.camunda.bpm.engine.impl.persistence.entity.UserEntity;
-
-import javax.naming.AuthenticationException;
-import javax.naming.Context;
-import javax.naming.NamingEnumeration;
-import javax.naming.NamingException;
-import javax.naming.directory.Attribute;
-import javax.naming.directory.Attributes;
-import javax.naming.directory.SearchResult;
-import javax.naming.ldap.Control;
-import javax.naming.ldap.InitialLdapContext;
-import javax.naming.ldap.LdapContext;
-import javax.naming.ldap.SortControl;
-import java.io.StringWriter;
-import java.util.ArrayList;
-import java.util.Hashtable;
-import java.util.List;
-import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
-import static org.camunda.bpm.engine.authorization.Permissions.READ;
-import static org.camunda.bpm.engine.authorization.Resources.GROUP;
-import static org.camunda.bpm.engine.authorization.Resources.USER;
 
 /**
  * <p>LDAP {@link ReadOnlyIdentityProvider}.</p>
@@ -162,6 +163,7 @@ public class LdapIdentityProviderSession implements ReadOnlyIdentityProvider {
     try {
       enumeration = initialContext.search(baseDn, groupSearchFilter, ldapConfiguration.getSearchControls());
 
+      List<User> userList = new ArrayList<User>();
       List<String> userDnList = new ArrayList<String>();
 
       // first find group
@@ -171,18 +173,22 @@ public class LdapIdentityProviderSession implements ReadOnlyIdentityProvider {
         NamingEnumeration<?> allMembers = memberAttribute.getAll();
 
         // iterate group members
-        while (allMembers.hasMoreElements() && userDnList.size() < query.getMaxResults()) {
+        while (allMembers.hasMoreElements() && userList.size() < query.getMaxResults()) {
           userDnList.add((String) allMembers.nextElement());
         }
 
       }
 
-      List<User> userList = new ArrayList<User>();
+      String queriedUserId  = query.getId();
+      String userBaseDn = composeDn(ldapConfiguration.getUserSearchBase(), ldapConfiguration.getBaseDn());
       for (String userDn : userDnList) {
-          List<User> users = findUsersWithoutGroupId(query, userDn);
-          if (users.size() > 0) {
-            userList.add(users.get(0));
-          }
+        String userId = userDn.substring(userDn.indexOf("=")+1, userDn.indexOf(","));
+        if(queriedUserId == null) {
+          query.userId(userId);
+        }
+        if(queriedUserId == null || queriedUserId.equals(userId)) {
+          userList.addAll(findUsersWithoutGroupId(query, userBaseDn));
+        }
       }
 
       return userList;
@@ -283,7 +289,7 @@ public class LdapIdentityProviderSession implements ReadOnlyIdentityProvider {
 
     // add additional filters from query
     if(query.getId() != null) {
-      addFilter(ldapConfiguration.getUserIdAttribute(), escapeLDAPSearchFilter(query.getId()), search);
+      addFilter(ldapConfiguration.getUserIdAttribute(), query.getId(), search);
     }
     if(query.getEmail() != null) {
       addFilter(ldapConfiguration.getUserEmailAttribute(), query.getEmail(), search);
@@ -396,13 +402,9 @@ public class LdapIdentityProviderSession implements ReadOnlyIdentityProvider {
       addFilter(ldapConfiguration.getGroupNameAttribute(), query.getNameLike(), search);
     }
     if(query.getUserId() != null) {
-      String userDn = null;
-      if(ldapConfiguration.isUsePosixGroups()) {
-        userDn = query.getUserId();
-      } else {
-        userDn = getDnForUser(query.getUserId());
-      }
-      addFilter(ldapConfiguration.getGroupMemberAttribute(), escapeLDAPSearchFilter(userDn), search);
+      addFilter(ldapConfiguration.getGroupMemberAttribute(), 
+          escapeLDAPSearchFilter(getDnForUser(query.getUserId())), 
+          search);
     }
     search.write(")");
 
@@ -546,7 +548,7 @@ public class LdapIdentityProviderSession implements ReadOnlyIdentityProvider {
     for (int i = 0; i < filter.length(); i++) {
       char curChar = filter.charAt(i);
         switch (curChar) {
-          case '\\':
+         case '\\':
             sb.append("\\5c");
             break;
           case '*':
