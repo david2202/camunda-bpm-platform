@@ -12,9 +12,9 @@
  */
 package org.camunda.bpm.identity.impl.ldap;
 
-import org.camunda.bpm.engine.identity.User;
-
 import java.util.List;
+
+import org.camunda.bpm.engine.identity.User;
 
 /**
  * @author Daniel Meyer
@@ -24,7 +24,7 @@ public class LdapUserQueryTest extends LdapIdentityProviderTest {
 
   public void testQueryNoFilter() {
     List<User> result = identityService.createUserQuery().list();
-    assertEquals(8, result.size());
+    assertEquals(7, result.size());
   }
 
   public void testFilterByUserId() {
