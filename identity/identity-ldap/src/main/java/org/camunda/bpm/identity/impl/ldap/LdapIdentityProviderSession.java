@@ -12,30 +12,6 @@
  */
 package org.camunda.bpm.identity.impl.ldap;
 
-import static org.camunda.bpm.engine.authorization.Permissions.READ;
-import static org.camunda.bpm.engine.authorization.Resources.GROUP;
-import static org.camunda.bpm.engine.authorization.Resources.USER;
-
-import java.io.StringWriter;
-import java.util.ArrayList;
-import java.util.Hashtable;
-import java.util.List;
-import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
-import javax.naming.AuthenticationException;
-import javax.naming.Context;
-import javax.naming.NamingEnumeration;
-import javax.naming.NamingException;
-import javax.naming.directory.Attribute;
-import javax.naming.directory.Attributes;
-import javax.naming.directory.SearchResult;
-import javax.naming.ldap.Control;
-import javax.naming.ldap.InitialLdapContext;
-import javax.naming.ldap.LdapContext;
-import javax.naming.ldap.SortControl;
-
 import org.camunda.bpm.engine.authorization.Permission;
 import org.camunda.bpm.engine.authorization.Resource;
 import org.camunda.bpm.engine.identity.Group;
@@ -50,6 +26,29 @@ import org.camunda.bpm.engine.impl.identity.ReadOnlyIdentityProvider;
 import org.camunda.bpm.engine.impl.interceptor.CommandContext;
 import org.camunda.bpm.engine.impl.persistence.entity.GroupEntity;
 import org.camunda.bpm.engine.impl.persistence.entity.UserEntity;
+
+import javax.naming.AuthenticationException;
+import javax.naming.Context;
+import javax.naming.NamingEnumeration;
+import javax.naming.NamingException;
+import javax.naming.directory.Attribute;
+import javax.naming.directory.Attributes;
+import javax.naming.directory.SearchResult;
+import javax.naming.ldap.Control;
+import javax.naming.ldap.InitialLdapContext;
+import javax.naming.ldap.LdapContext;
+import javax.naming.ldap.SortControl;
+import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.Hashtable;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import static org.camunda.bpm.engine.authorization.Permissions.READ;
+import static org.camunda.bpm.engine.authorization.Resources.GROUP;
+import static org.camunda.bpm.engine.authorization.Resources.USER;
 
 /**
  * <p>LDAP {@link ReadOnlyIdentityProvider}.</p>
@@ -397,9 +396,13 @@ public class LdapIdentityProviderSession implements ReadOnlyIdentityProvider {
       addFilter(ldapConfiguration.getGroupNameAttribute(), query.getNameLike(), search);
     }
     if(query.getUserId() != null) {
-      addFilter(ldapConfiguration.getGroupMemberAttribute(), 
-          escapeLDAPSearchFilter(getDnForUser(query.getUserId())), 
-          search);
+      String userDn = null;
+      if(ldapConfiguration.isUsePosixGroups()) {
+        userDn = query.getUserId();
+      } else {
+        userDn = getDnForUser(query.getUserId());
+      }
+      addFilter(ldapConfiguration.getGroupMemberAttribute(), escapeLDAPSearchFilter(userDn), search);
     }
     search.write(")");
 
@@ -543,7 +546,7 @@ public class LdapIdentityProviderSession implements ReadOnlyIdentityProvider {
     for (int i = 0; i < filter.length(); i++) {
       char curChar = filter.charAt(i);
         switch (curChar) {
-         case '\\':
+          case '\\':
             sb.append("\\5c");
             break;
           case '*':
