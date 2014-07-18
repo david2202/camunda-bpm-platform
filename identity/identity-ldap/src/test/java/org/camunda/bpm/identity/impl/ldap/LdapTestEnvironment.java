@@ -12,19 +12,6 @@
  */
 package org.camunda.bpm.identity.impl.ldap;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.util.HashSet;
-import java.util.Properties;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
-import javax.naming.InvalidNameException;
-import javax.naming.NamingException;
-
 import org.apache.directory.server.core.DefaultDirectoryService;
 import org.apache.directory.server.core.DirectoryService;
 import org.apache.directory.server.core.entry.ServerEntry;
@@ -36,6 +23,14 @@ import org.apache.directory.server.protocol.shared.transport.TcpTransport;
 import org.apache.directory.server.xdbm.Index;
 import org.apache.directory.shared.ldap.name.LdapDN;
 import org.camunda.bpm.engine.impl.util.IoUtil;
+
+import javax.naming.InvalidNameException;
+import javax.naming.NamingException;
+import java.io.*;
+import java.util.HashSet;
+import java.util.Properties;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * <p>LDAP test setup using apache directory</p>
@@ -93,6 +88,10 @@ public class LdapTestEnvironment {
     String dnMonster = createUserUid("monster", "office-london", "Cookie", "Monster", "monster@camunda.org");
     
     createGroup("office-home");
+    // Doesn't work using backslashes, end up with two uid attributes
+    // See https://issues.apache.org/jira/browse/DIRSERVER-1442
+    String dnDavid = createUserUid("david(IT)", "office-home", "David", "Howe\\IT\\", "david@camunda.org");
+    
     String dnRuecker = createUserUid("ruecker", "office-home", "Bernd", "Ruecker", "ruecker@camunda.org");
 
     createGroup("office-external");
@@ -101,7 +100,7 @@ public class LdapTestEnvironment {
     createRole("management", dnRuecker, dnRobert, dnDaniel);
     createRole("development", dnRoman, dnDaniel, dnOscar);
     createRole("consulting", dnRuecker);
-    createRole("sales", dnRuecker, dnMonster);
+    createRole("sales", dnRuecker, dnMonster, dnDavid);
     createRole("external", dnFozzie);
   }
 
@@ -132,7 +131,7 @@ public class LdapTestEnvironment {
       System.out.println("created entry: " + dn.toNormName());
     }
   }
-  
+
   protected void createGroup(String name) throws InvalidNameException, Exception, NamingException {
     LdapDN dn = new LdapDN("ou=" + name + ",o=camunda,c=org");
     if (!service.getAdminSession().exists(dn)) {
